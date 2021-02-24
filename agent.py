@@ -12,6 +12,11 @@ random.seed(101)
 
 mse_loss_function = torch.nn.MSELoss()
 
+if torch.cuda.device_count() > 0:
+    DEVICE = torch.device('cuda')
+else:
+    DEVICE = torch.device('cpu')
+
 
 def conv3x3(in_channels, out_channels, stride=1):
     return Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=stride, padding=1)
@@ -85,16 +90,16 @@ class Critic(Module):
 
 class SAC_discrete:
     def __init__(self, n_states, n_actions):
-        self.replay_size = 1024
+        self.replay_size = 120000
         self.experience_replay = deque(maxlen=self.replay_size)
         self.n_actions = n_actions
         self.n_states = n_states
         self.lr = 0.0003
         self.batch_size = 64
         self.gamma = 0.99
-        self.actor = Actor(n_actions=n_actions)
-        self.critic = Critic(n_actions=n_actions)
-        self.target_critic = Critic(n_actions=n_actions)
+        self.actor = Actor(n_actions=n_actions).to(DEVICE)
+        self.critic = Critic(n_actions=n_actions).to(DEVICE)
+        self.target_critic = Critic(n_actions=n_actions).to(DEVICE)
         self.optim_actor = Adam(params=self.actor.parameters(), lr=self.lr)
         self.optim_critic = Adam(params=self.critic.parameters(), lr=self.lr)
         self.H = 0.98 * (-np.log(1 / self.n_actions))
@@ -103,7 +108,7 @@ class SAC_discrete:
         self.optim_alpha = Adam(params=[self.alpha], lr=self.lr)
 
     def get_action(self, state, test=False):
-        action_probs = self.actor(state.float())
+        action_probs = self.actor(state.float().to(DEVICE))
         action_probs_np = action_probs.detach().cpu().numpy().squeeze()
         if not test:
             return int(np.random.choice(self.n_actions, 1, p=action_probs_np)), action_probs
@@ -129,9 +134,9 @@ class SAC_discrete:
         predicts_per_action = torch.gather(predicts, 1, a_indices)  # (batch, 1)
 
         target = r + self.gamma * v_vector  # (batch, 1)
-        done_indices = np.argwhere(deads)
+        done_indices = np.argwhere(deads.cpu().numpy())
         if done_indices.shape[0] > 0:
-            done_indices = torch.squeeze(deads.nonzero())
+            done_indices = torch.squeeze(torch.nonzero(deads)).to(DEVICE)
             target[done_indices, 0] = torch.squeeze(r[done_indices])
 
         self.optim_critic.zero_grad()
@@ -176,7 +181,7 @@ class SAC_discrete:
         a_currs = torch.zeros((self.batch_size, 1))
         r = torch.zeros((self.batch_size, 1))
         s_nexts = torch.zeros((self.batch_size, ch_shape, img_shape, img_shape))
-        deads = torch.zeros((self.batch_size,))
+        deads = torch.zeros((self.batch_size, 1))
 
         for batch in range(self.batch_size):
             s_currs[batch] = x_batch[batch].s_curr
@@ -185,7 +190,7 @@ class SAC_discrete:
             s_nexts[batch] = x_batch[batch].s_next
             deads[batch] = x_batch[batch].dead
 
-        return s_currs, a_currs, r, s_nexts, deads
+        return s_currs.to(DEVICE), a_currs.to(DEVICE), r.to(DEVICE), s_nexts.to(DEVICE), deads.to(DEVICE)
 
     def train(self, x_batch):
         s_currs, a_currs, r, s_nexts, deads = self.process_batch(x_batch=x_batch)

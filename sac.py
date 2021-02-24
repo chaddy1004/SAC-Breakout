@@ -15,6 +15,11 @@ torch.manual_seed(19971124)
 np.random.seed(42)
 random.seed(101)
 
+if torch.cuda.device_count() > 0:
+    DEVICE = torch.device('cuda')
+else:
+    DEVICE = torch.device('cpu')
+
 mse_loss_function = torch.nn.MSELoss()
 
 
@@ -27,32 +32,41 @@ def main(episodes, exp_name):
     writer = tf.summary.create_file_writer(logdir)
     # no frame skip as DQFD did not have this
     # v4 always performs the chosen action
-    env = gym.make('BreakoutNoFrameskip-v4')
+    # env = gym.make('BreakoutNoFrameskip-v4')
+    env = gym.make('BreakoutDeterministic-v4')
     states = env.observation_space.shape[0]  # shape returns a tuple
-    n_actions = env.action_space.n
+    # n_actions = env.action_space.n
+    n_actions = 3
     agent = SAC_discrete(n_states=states, n_actions=n_actions)
     warmup_ep = 0
     # import time
-    # env.reset()
-    # _, r, done, info = env.step(1)
-    # while True:
-    #     _, r, done, info = env.step(3)
-    #     print(r,done, info)
-    #     env.render()
-    #     time.sleep(1/10)
+    env.reset()
+    _, r, done, info = env.step(1)
+    while True:
+        observe, *_ = env.step(3)
+        print(observe)
+        # print(r,done, info)
+        # env.render()
+        # time.sleep(1/10)
 
     for ep in range(episodes):
-        frame_curr = env.reset()
+        env.reset()
         # pre-processes the original raw rgb frame to resized, grayscale PyTorch tensor
-        s_curr_tensor = frame_to_state(frame_curr)
         done = False
         dead = False
         score = 0
         agent.update_weights()  # update weight every time an episode ends
         n_lives = 5
+        frame_next = None
+        for _ in range(0, random.randint(1, 30)):
+            frame_next, *_ = env.step(1)
+
+        frame_curr = frame_next
+        s_curr_tensor = frame_to_state(frame_curr)
+        step = 0
         while not done:
             a_curr, action_prob = agent.get_action(s_curr_tensor)
-            frame_next, r, done, info = env.step(a_curr)
+            frame_next, r, done, info = env.step(a_curr+1)
             # print(r, done, info)
             if n_lives > info['ale.lives']:
                 dead = True
@@ -80,7 +94,8 @@ def main(episodes, exp_name):
                 agent.experience_replay.append(sample)
                 x_batch = random.sample(agent.experience_replay, agent.batch_size)
                 agent.train(x_batch)
-                print("train on batch complete")
+                print(f"score: {score}, lives: {n_lives}")
+                print(f"Episode: {ep}, Step : {step}, train on batch complete")
                 s_curr_tensor = s_next_tensor
 
             # reset the dead-ness to play next episode
@@ -88,9 +103,11 @@ def main(episodes, exp_name):
                 dead = False
             if done:
                 print(f"ep:{ep - warmup_ep}:################Game Over###################", score)
+                print(len(agent.experience_replay))
                 with writer.as_default():
                     tf.summary.scalar("reward", r, ep)
                     tf.summary.scalar("score", score, ep)
+            step += 1
     return agent
 
 
