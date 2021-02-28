@@ -44,7 +44,7 @@ class BasicBlock(Module):
 class Actor(Module):
     def __init__(self, n_actions):
         super(Actor, self).__init__()
-        self.layer1 = BasicBlock(in_channels=1, out_channels=16, stride=1, downsample=True)  # 42 42 16
+        self.layer1 = BasicBlock(in_channels=4, out_channels=16, stride=1, downsample=True)  # 42 42 16
         self.layer2 = BasicBlock(in_channels=16, out_channels=32, stride=1, downsample=True)  # 21 21 8
         self.layer3 = BasicBlock(in_channels=32, out_channels=64, stride=1, downsample=True)  # 10 10 64
         self.layer4 = BasicBlock(in_channels=64, out_channels=128, stride=1, downsample=True)  # 5  5 128
@@ -68,7 +68,7 @@ class Actor(Module):
 class Critic(Module):
     def __init__(self, n_actions):
         super(Critic, self).__init__()
-        self.layer1 = BasicBlock(in_channels=1, out_channels=16, stride=1, downsample=True)  # 42 42 16
+        self.layer1 = BasicBlock(in_channels=4, out_channels=16, stride=1, downsample=True)  # 42 42 16
         self.layer2 = BasicBlock(in_channels=16, out_channels=32, stride=1, downsample=True)  # 21 21 8
         self.layer3 = BasicBlock(in_channels=32, out_channels=64, stride=1, downsample=True)  # 10 10 64
         self.layer4 = BasicBlock(in_channels=64, out_channels=128, stride=1, downsample=True)  # 5  5 128
@@ -90,7 +90,7 @@ class Critic(Module):
 
 class SAC_discrete:
     def __init__(self, n_states, n_actions):
-        self.replay_size = 120000
+        self.replay_size = 50000
         self.experience_replay = deque(maxlen=self.replay_size)
         self.n_actions = n_actions
         self.n_states = n_states

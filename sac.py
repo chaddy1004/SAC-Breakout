@@ -9,7 +9,7 @@ import tensorflow as tf
 import torch
 
 from agent import SAC_discrete
-from utils import frame_to_state
+from utils import frame_to_tensor
 
 torch.manual_seed(19971124)
 np.random.seed(42)
@@ -40,14 +40,14 @@ def main(episodes, exp_name):
     agent = SAC_discrete(n_states=states, n_actions=n_actions)
     warmup_ep = 0
     # import time
-    env.reset()
-    _, r, done, info = env.step(1)
-    while True:
-        observe, *_ = env.step(3)
-        print(observe)
-        # print(r,done, info)
-        # env.render()
-        # time.sleep(1/10)
+    # env.reset()
+    # # _, r, done, info = env.step(1)
+    # while True:
+    #     observe, r, done, info = env.step(1)
+    #     # print(observe)
+    #     print(r,done, info)
+    #     # env.render()
+    #     time.sleep(1/10)
 
     for ep in range(episodes):
         env.reset()
@@ -62,8 +62,11 @@ def main(episodes, exp_name):
             frame_next, *_ = env.step(1)
 
         frame_curr = frame_next
-        s_curr_tensor = frame_to_state(frame_curr)
+        frame_curr_tensor = frame_to_tensor(frame_curr)
         step = 0
+
+        # state will now refer to the concatenated frames
+        s_curr_tensor = torch.cat([frame_curr_tensor, frame_curr_tensor, frame_curr_tensor, frame_curr_tensor], dim=1)
         while not done:
             a_curr, action_prob = agent.get_action(s_curr_tensor)
             frame_next, r, done, info = env.step(a_curr+1)
@@ -74,7 +77,9 @@ def main(episodes, exp_name):
 
             r = np.clip(r, -1.0, 1.0)
 
-            s_next_tensor = frame_to_state(frame_next)
+            frame_next_tensor = frame_to_tensor(frame_next)
+
+            s_next_tensor = torch.cat([frame_next_tensor, s_curr_tensor[:, 0:3, ...]], dim=1)
 
             score += r
             r = np.clip(r, -1, 1)
@@ -87,7 +92,7 @@ def main(episodes, exp_name):
             sample.s_next = s_next_tensor
             sample.dead = dead
 
-            if len(agent.experience_replay) < agent.replay_size:
+            if len(agent.experience_replay) < (agent.replay_size//2):
                 agent.experience_replay.append(sample)
                 s_curr_tensor = s_next_tensor
             else:
@@ -103,11 +108,11 @@ def main(episodes, exp_name):
                 dead = False
             if done:
                 print(f"ep:{ep - warmup_ep}:################Game Over###################", score)
-                print(len(agent.experience_replay))
                 with writer.as_default():
-                    tf.summary.scalar("reward", r, ep)
                     tf.summary.scalar("score", score, ep)
             step += 1
+        if (ep+1) % 500 == 0:
+            torch.save(agent.actor.state_dict(), f"actor_{ep+1}.pt")
     return agent
 
 
@@ -137,7 +142,7 @@ def env_with_render(agent):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--exp_name", type=str, default="PG_REINFORCE_pt", help="exp_name")
-    ap.add_argument("--episodes", type=int, default=460, help="number of episodes to run")
+    ap.add_argument("--episodes", type=int, default=50000, help="number of episodes to run")
     args = vars(ap.parse_args())
     trained_agent = main(episodes=args["episodes"], exp_name=args["exp_name"])
     env_with_render(agent=trained_agent)
